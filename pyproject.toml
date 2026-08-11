@@ -1,0 +1,20 @@
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = [
+    "E501",  # line length -- black already enforces this; avoid double-reporting
+]
+
+[tool.ruff.lint.per-file-ignores]
+# train.py deliberately calls warnings.filterwarnings("ignore") before other
+# imports (to suppress noisy deprecation warnings some ML libraries print
+# on import) -- that's the correct order for what it's doing, not disorganized
+# code, so E402 is silenced for this file only.
+"training/train.py" = ["E402"]

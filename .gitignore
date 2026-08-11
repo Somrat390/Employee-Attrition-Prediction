@@ -1,0 +1,19 @@
+__pycache__/
+**/__pycache__/
+*.pyc
+venv/
+.venv/
+*.log
+
+# MLflow local tracking artifacts -- regenerate by running training/train.py
+mlflow.db
+mlruns/
+
+# Local SQLite fallback for prediction logging (only used when DATABASE_URL
+# isn't set to a real Postgres instance -- see app/database.py)
+predictions.db
+
+# pytest artifacts
+.pytest_cache/
+.coverage
+htmlcov/
