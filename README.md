@@ -2,20 +2,32 @@
 
 An end-to-end machine learning system that predicts whether an employee is
 likely to leave a company, and explains *why*. Starts from feature
-engineering in a notebook and ends as a containerized, tested, CI-integrated
-application: a FastAPI backend, a Streamlit frontend, SHAP explainability,
-MLflow experiment tracking, PostgreSQL prediction logging, structured
-logging, and an automated test suite.
+engineering in a notebook and ends as a containerized, tested, CI-integrated,
+**deployed** application: a FastAPI backend, a Streamlit frontend, SHAP
+explainability, MLflow experiment tracking, PostgreSQL prediction logging,
+structured logging, and an automated test suite.
 
 **Model performance:** Logistic Regression + SMOTE, F1 improved from 0.438
 (untreated class imbalance) to **0.542** (recall 0.553, precision 0.531,
 PR-AUC 0.567) after properly applying SMOTE and tuning the decision
 threshold to 0.66.
 
+## 🚀 Live Demo
+
+| Service        | URL                                                                    |
+|-----------------|-------------------------------------------------------------------------|
+| **App (frontend)** | [employee-attrition-prediction-ghthq7mung9k6wnmkwltvz.streamlit.app](https://employee-attrition-prediction-ghthq7mung9k6wnmkwltvz.streamlit.app/) |
+| **API (backend)**  | [attrition-backend-eyao.onrender.com](https://attrition-backend-eyao.onrender.com) — [`/docs`](https://attrition-backend-eyao.onrender.com/docs) for Swagger |
+
+> The backend is on Render's free tier, which spins down after 15 minutes of
+> inactivity. If the app looks like it's hanging on first load, that's a cold
+> start (30-60s) — wait it out, it's not broken.
+
 ---
 
 ## Table of Contents
 
+- [Live Demo](#-live-demo)
 - [Architecture](#architecture)
 - [Features](#features)
 - [Project Structure](#project-structure)
@@ -27,6 +39,7 @@ threshold to 0.66.
 - [Model Training & MLflow](#model-training--mlflow)
 - [Testing](#testing)
 - [CI/CD](#cicd)
+- [Deployment](#deployment)
 - [Logging](#logging)
 - [Key Design Decisions](#key-design-decisions)
 - [Roadmap](#roadmap)
@@ -36,23 +49,26 @@ threshold to 0.66.
 ## Architecture
 
 ```
-┌─────────────────┐      HTTP/JSON       ┌──────────────────────┐
-│  Streamlit       │ ───────────────────▶ │  FastAPI backend      │
-│  frontend         │ ◀─────────────────── │  (predict, explain)   │
-│  (port 8501)      │    predictions,      │  (port 8000)           │
+┌─────────────────┐      HTTPS/JSON      ┌──────────────────────┐
+│  Streamlit         │ ───────────────────▶ │  FastAPI backend       │
+│  frontend            │ ◀─────────────────── │  (predict, explain)    │
+│  Streamlit Cloud       │    predictions,      │  Render (Docker)        │
 └─────────────────┘    SHAP charts        └───────────┬──────────┘
                                                           │
                                     ┌─────────────────────┼─────────────────────┐
                                     ▼                      ▼                     ▼
                           ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
-                          │  PostgreSQL        │  │  Trained pipeline  │  │  Structured logs   │
-                          │  (prediction log)   │  │  (.pkl, joblib)     │  │  (stdout, JSON)     │
+                          │  PostgreSQL         │  │  Trained pipeline   │  │  Structured logs    │
+                          │  (Render, prediction  │  │  (.pkl, joblib)      │  │  (stdout, JSON)       │
+                          │   log)                 │  │                        │  │                        │
                           └──────────────────┘  └──────────────────┘  └──────────────────┘
 ```
 
 The frontend has **zero ML dependencies** — it only calls the backend over
 HTTP and renders what comes back. All model logic, preprocessing, and SHAP
-computation live server-side in `app/`.
+computation live server-side in `app/`. This is also why frontend and
+backend can be deployed on two completely different platforms (Streamlit
+Community Cloud + Render) without sharing dependencies.
 
 ## Features
 
@@ -75,7 +91,9 @@ computation live server-side in `app/`.
 - **CI/CD** — GitHub Actions runs tests, formatting/lint checks, and Docker
   builds on every push.
 - **Containerized** — `docker compose up --build` starts Postgres, backend,
-  and frontend together.
+  and frontend together, locally.
+- **Deployed** — backend on Render (Docker + managed Postgres), frontend on
+  Streamlit Community Cloud, talking to each other over HTTPS with CORS.
 
 ## Project Structure
 
@@ -84,7 +102,7 @@ employee_attrition/
 ├── .github/workflows/
 │   └── ci.yml                  # test, lint, and build jobs
 ├── app/
-│   ├── main.py                 # FastAPI app and all routes
+│   ├── main.py                 # FastAPI app, routes, and CORS setup
 │   ├── model_loader.py          # loads the trained pipeline once at startup
 │   ├── schemas.py                # Pydantic request/response models
 │   ├── predict.py                 # prediction logic
@@ -92,9 +110,9 @@ employee_attrition/
 │   ├── database.py                # SQLAlchemy models, prediction logging
 │   └── logging_config.py           # structured JSON logging
 ├── frontend/
-│   ├── app.py                   # Streamlit UI
+│   ├── app.py                   # Streamlit UI (reads config from env or st.secrets)
 │   ├── requirements.txt
-│   └── Dockerfile
+│   └── Dockerfile                # used only for local docker-compose, not Streamlit Cloud
 ├── models/
 │   ├── employee_attrition_pipeline.pkl   # {pipeline, threshold, label_encoder}
 │   └── shap_background_sample.csv          # background data for SHAP
@@ -107,8 +125,9 @@ employee_attrition/
 │   ├── test_predict.py             # model logic tests
 │   ├── test_schemas.py             # input validation tests
 │   └── test_api.py                  # full API tests
-├── Dockerfile                     # backend image
-├── docker-compose.yml               # backend + frontend + postgres
+├── Dockerfile                     # backend image (binds to $PORT for Render/Railway)
+├── docker-compose.yml               # backend + frontend + postgres, for local dev
+├── render.yaml                       # Render Blueprint: backend web service + Postgres
 ├── pyproject.toml                    # black + ruff config
 ├── pytest.ini
 ├── requirements.txt                   # backend dependencies
@@ -116,6 +135,8 @@ employee_attrition/
 ```
 
 ## Getting Started
+
+Want to run this yourself instead of using the live links above? Two ways:
 
 ### Option A: Docker (recommended)
 
@@ -164,8 +185,9 @@ export DATABASE_URL="postgresql+psycopg2://postgres:postgres@localhost:5432/attr
 
 ## Using the App
 
-1. Open the Streamlit frontend and fill in the employee form (or leave the
-   defaults).
+1. Open the [live app](https://employee-attrition-prediction-ghthq7mung9k6wnmkwltvz.streamlit.app/)
+   (or your local Streamlit instance) and fill in the employee form (or leave
+   the defaults).
 2. Click **Predict** — you'll see a Stay/Leave result with a probability.
 3. A waterfall chart explains which features pushed the prediction in each
    direction, with exact SHAP values available in an expander below it.
@@ -184,12 +206,13 @@ export DATABASE_URL="postgresql+psycopg2://postgres:postgres@localhost:5432/attr
 | POST   | `/explain/waterfall`   | Per-employee SHAP waterfall chart (PNG)                       |
 | POST   | `/explain/force`       | Per-employee SHAP force plot (PNG)                              |
 
-Full interactive documentation (Swagger) is available at `/docs` once the
-backend is running.
+Full interactive documentation (Swagger) is live at
+[attrition-backend-eyao.onrender.com/docs](https://attrition-backend-eyao.onrender.com/docs),
+or at `/docs` on whichever backend you're running.
 
 **Example request:**
 ```bash
-curl -X POST http://127.0.0.1:8000/predict \
+curl -X POST https://attrition-backend-eyao.onrender.com/predict \
   -H "Content-Type: application/json" \
   -d '{
     "Age": 29, "DailyRate": 500, "DistanceFromHome": 20, "HourlyRate": 55,
@@ -260,6 +283,31 @@ database.
 - **lint** — `black --check` + `ruff check`
 - **build** — Docker build of both images (only runs if test + lint pass)
 
+## Deployment
+
+| Piece            | Platform                    | How                                                        |
+|--------------------|--------------------------------|----------------------------------------------------------------|
+| Backend + Postgres  | [Render](https://render.com)      | Docker web service + managed Postgres, defined in `render.yaml` |
+| Frontend             | [Streamlit Community Cloud](https://streamlit.io/cloud) | Deployed straight from `frontend/app.py`, no Docker involved         |
+
+**Backend** — Render assigns a port dynamically via a `PORT` environment
+variable, so the `Dockerfile`'s `CMD` binds to `${PORT:-8000}` instead of a
+hardcoded port (falls back to 8000 locally/in Compose, where `PORT` isn't
+set). `render.yaml` is a Render Blueprint: pushing it to the repo root lets
+Render create the backend service *and* a Postgres database together, wired
+via `DATABASE_URL` automatically.
+
+**Frontend** — Streamlit Community Cloud reads `frontend/requirements.txt`
+and runs `frontend/app.py` directly; it never touches `frontend/Dockerfile`.
+The backend's URL is passed in via a Streamlit Cloud **secret**
+(`API_BASE_URL`), which — unlike Docker — Streamlit Cloud does *not* expose
+as an OS environment variable, so `frontend/app.py` checks `st.secrets`
+first and falls back to `os.environ` for local/Docker use.
+
+**CORS** — since frontend and backend now live on different domains,
+`app/main.py` adds `CORSMiddleware` so the browser doesn't block the
+frontend's calls to the backend.
+
 ## Logging
 
 Every request, prediction, and error produces one structured JSON line on
@@ -270,7 +318,8 @@ stdout:
 ```
 
 Every response includes an `X-Request-ID` header matching its log line, for
-tracing a specific request through the logs.
+tracing a specific request through the logs. On Render, these show up
+directly in the service's Logs tab.
 
 ## Key Design Decisions
 
@@ -289,8 +338,12 @@ tracing a specific request through the logs.
 - **JSON logs on stdout, not files** — the standard approach for anything
   running in Docker/Render/Railway, which capture stdout automatically.
 - **Frontend has zero ML dependencies** — it only calls the backend over
-  HTTP, so the two can be deployed independently (e.g. Streamlit Community
-  Cloud + Render) without shared dependencies.
+  HTTP, so the two are deployed independently (Streamlit Community Cloud +
+  Render) without shared dependencies.
+- **Config read from both env vars and platform secrets** — `frontend/app.py`
+  checks `st.secrets` before `os.environ`, since Streamlit Cloud's secrets
+  don't become OS environment variables the way Docker's do; the same code
+  works locally, in Compose, and on Streamlit Cloud unchanged.
 
 ## Roadmap
 
@@ -305,4 +358,4 @@ tracing a specific request through the logs.
 - [x] Structured logging
 - [x] Automated testing (pytest)
 - [x] CI/CD (GitHub Actions)
-- [ ] Deployment (FastAPI → Render/Railway, Streamlit → Streamlit Community Cloud)
+- [x] Deployment (backend on Render, frontend on Streamlit Community Cloud)
