@@ -3,8 +3,12 @@
 Run with:
     streamlit run app.py
 
-Talks to the FastAPI backend from Week 1 over HTTP. Set the API_URL environment
-variable if the backend isn't running on the default localhost:8000.
+Talks to the FastAPI backend over HTTP. Configure where with API_BASE_URL --
+either as an OS environment variable (Docker, docker-compose, running
+locally) or as a Streamlit Cloud secret (Settings -> Secrets, as
+API_BASE_URL = "https://your-backend.onrender.com"). Streamlit Community
+Cloud's secrets don't become OS environment variables, so both sources are
+checked below rather than relying on os.environ alone.
 """
 
 import os
@@ -12,7 +16,17 @@ import os
 import requests
 import streamlit as st
 
-API_BASE = os.environ.get("API_BASE_URL", "http://127.0.0.1:8000")
+
+def _get_config(key: str, default: str) -> str:
+    try:
+        return st.secrets[key]
+    except Exception:
+        # No secrets.toml at all (local dev), or this key isn't in it --
+        # either way, fall back to a plain OS environment variable.
+        return os.environ.get(key, default)
+
+
+API_BASE = _get_config("API_BASE_URL", "http://127.0.0.1:8000")
 API_URL = f"{API_BASE}/predict"
 EXPLAIN_URL = f"{API_BASE}/explain"
 WATERFALL_URL = f"{API_BASE}/explain/waterfall"
