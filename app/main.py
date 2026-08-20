@@ -7,11 +7,13 @@ Then open http://127.0.0.1:8000/docs for interactive Swagger docs.
 """
 
 import json
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.orm import Session
 
@@ -50,8 +52,26 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Employee Attrition Prediction API",
     description="Serves the trained Logistic Regression + SMOTE pipeline from the notebook.",
-    version="1.3.0",
+    version="1.4.0",
     lifespan=lifespan,
+)
+
+# The frontend and backend are deployed as separate services on separate
+# domains (Streamlit Community Cloud + Render/Railway) once Week 10's
+# deployment is live, so the browser treats every frontend->backend call as
+# cross-origin -- without CORS headers, browsers block the response before
+# Streamlit's Python code ever sees it (this doesn't affect server-to-server
+# calls, only requests a browser JS runtime makes, so it wasn't needed while
+# everything ran on localhost or inside one Docker network).
+# ALLOWED_ORIGINS defaults to "*" since this is a portfolio project with a
+# single, non-sensitive read-mostly endpoint set -- for anything handling
+# real user data, set ALLOWED_ORIGINS to the exact frontend URL instead.
+_allowed_origins = os.environ.get("ALLOWED_ORIGINS", "*")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in _allowed_origins.split(",")],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
