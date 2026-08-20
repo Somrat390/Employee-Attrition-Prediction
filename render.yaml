@@ -1,0 +1,27 @@
+# Render "Blueprint" -- lets Render create the backend web service and its
+# Postgres database together from this one file (New -> Blueprint on
+# Render's dashboard, pointed at this repo) instead of configuring each by
+# hand. The frontend (Streamlit) is deployed separately on Streamlit
+# Community Cloud, not here -- see README.md's Deployment section.
+
+services:
+  - type: web
+    name: attrition-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: attrition-db
+          property: connectionString
+      - key: ALLOWED_ORIGINS
+        value: "*"
+
+databases:
+  - name: attrition-db
+    databaseName: attrition_db
+    user: attrition_user
+    plan: free
